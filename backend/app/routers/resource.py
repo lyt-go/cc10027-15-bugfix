@@ -119,6 +119,19 @@ def run_backfill_pipeline(source_key: str, time_range: str = Query(default="2026
     return pipeline.backfill_pipeline(source_key, time_range)
 
 
+@router.post("/pipelines/backfill-batch")
+def run_backfill_batch_pipeline(payload: dict[str, Any]) -> dict[str, Any]:
+    """批量回溯管道：批量创建时间段任务（并发安全）并逐条返回对应进度。"""
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    return pipeline.backfill_batch_pipeline(items)
+
+
+@router.post("/pipelines/backfill-resume/{task_id}")
+def run_backfill_resume_pipeline(task_id: str, batch_size: int = Query(default=50, ge=1)) -> dict[str, Any]:
+    """回溯续做管道：位点消费定位凭证，把已存进度交给正确的回溯采集输入后续跑。"""
+    return pipeline.backfill_resume_pipeline(task_id, batch_size)
+
+
 @router.post("/pipelines/quality-alert/{source_key}")
 def run_quality_alert_pipeline(source_key: str) -> dict[str, Any]:
     """执行质量诊断+告警管道：诊断 -> 评估 -> 触发告警 -> 位点回滚。"""

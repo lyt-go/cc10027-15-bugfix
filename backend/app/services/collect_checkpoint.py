@@ -70,6 +70,37 @@ class CollectCheckpointService(BaseModuleService):
                 all_cps.append(cp)
         return all_cps
 
+    def get_backfill_checkpoint(self, task_id: str, entry_id: Any = None) -> dict[str, Any]:
+        """消费回溯批量任务定位凭证：把该凭证已存的进度交给正确的回溯采集输入。"""
+        cls = self._safe_import("app.services.backfill_range", "BackfillRangeService")
+        return cls().get_backfill_progress(task_id, entry_id=entry_id)
+
+    def list_backfill_checkpoints(self) -> list[dict[str, Any]]:
+        """列出全部回溯位点：每份已存进度归属到正确的回溯任务，历史范围仍可查。"""
+        cls = self._safe_import("app.services.backfill_range", "BackfillRangeService")
+        svc = cls()
+        items = []
+        cp_dir = self._data_dir("checkpoints")
+        for path in sorted(cp_dir.glob("backfill_*.json")):
+            if path.name == "backfill_registry.json":
+                continue
+            cp = self._read_checkpoint(path.stem)
+            if not cp:
+                continue
+            task_id = str(cp.get("task_id") or path.stem[len("backfill_"):])
+            owner = svc.get_backfill_progress(task_id, entry_id=cp.get("entry_id"))
+            items.append({
+                "checkpoint": path.stem,
+                "task_id": task_id,
+                "entry_id": owner.get("entry_id"),
+                "source_key": cp.get("source_key", ""),
+                "time_range": cp.get("time_range", ""),
+                "line_no": cp.get("line_no", 0),
+                "offset": cp.get("offset", 0),
+                "status": cp.get("status", ""),
+            })
+        return items
+
     def commit_checkpoint(self, source_key: str) -> dict[str, Any]:
         """提交采集位点并自动触发下游格式化输出。"""
         cp = self._read_checkpoint(source_key)

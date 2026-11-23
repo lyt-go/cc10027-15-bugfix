@@ -154,6 +154,41 @@ class CrossModulePipeline:
             "duration": round(time.time() - started_at, 2),
         }
 
+    def backfill_batch_pipeline(self, items: list[dict[str, Any]]) -> dict[str, Any]:
+        """批量回溯管道：批量登记（并发安全）-> 逐条查看对应进度。"""
+        started_at = time.time()
+
+        tasks = self.backfill_range.create_backfill_batch(items)
+        # 采集位点消费定位凭证，逐条取出每个任务的已存进度
+        progresses = [
+            self.collect_checkpoint.get_backfill_checkpoint(task["任务编号"])
+            for task in tasks
+        ]
+
+        return {
+            "pipeline": "backfill_batch",
+            "tasks": tasks,
+            "progresses": progresses,
+            "duration": round(time.time() - started_at, 2),
+        }
+
+    def backfill_resume_pipeline(self, task_id: str, batch_size: int = 50) -> dict[str, Any]:
+        """回溯续做管道：采集位点消费定位凭证 -> 已存进度交给正确的回溯采集输入 -> 断点续跑。"""
+        started_at = time.time()
+
+        progress = self.collect_checkpoint.get_backfill_checkpoint(task_id)
+        resume_r = self.backfill_range.execute_backfill(task_id, batch_size=batch_size)
+        if "error" in resume_r:
+            return resume_r
+
+        return {
+            "pipeline": "backfill_resume",
+            "task_id": task_id,
+            "progress_before": progress,
+            "resume": resume_r,
+            "duration": round(time.time() - started_at, 2),
+        }
+
     def quality_alert_pipeline(self, source_key: str) -> dict[str, Any]:
         """质量诊断+告警管道：诊断 -> 评估 -> 触发告警 -> 位点回滚。"""
         started_at = time.time()
